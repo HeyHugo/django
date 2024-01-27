@@ -189,20 +189,23 @@ class ASGIHandler(base.BaseHandler):
             return
 
         async def process_request(request, send):
-            response = await self.run_get_response(request)
             await self.send_response(response, send)
 
-        # Try to catch a disconnect while getting response.
-        tasks = [
-            # Check the status of these tasks and (optionally) terminate them
-            # in this order. The listen_for_disconnect() task goes first
-            # because it should not raise unexpected errors that would prevent
-            # us from cancelling process_request().
-            asyncio.create_task(self.listen_for_disconnect(receive)),
-            asyncio.create_task(process_request(request, send)),
-        ]
+        response = await self.run_get_response(request)
+        if response.streaming:
+            tasks = [
+                # Check the status of these tasks and (optionally) terminate them
+                # in this order. The listen_for_disconnect() task goes first
+                # because it should not raise unexpected errors that would prevent
+                # us from cancelling process_request().
+                asyncio.create_task(self.listen_for_disconnect(receive)),
+                asyncio.create_task(process_request(request, send)),
+            ]
+        else:
+            tasks = [
+                asyncio.create_task(process_request(request, send)),
+            ]
         await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        # Now wait on both tasks (they may have both finished by now).
         for task in tasks:
             if task.done():
                 try:
